@@ -12,7 +12,7 @@ Amp Runner Manager 是一个仅适用于 macOS 的 Amp 插件。它使用一个�
 - `stop_project_runner`
 - `list_project_runners`
 
-管理 Runner 和所有项目 Runner 都会启用 Amp 远程 Terminal。项目 Runner 以已注册的 Git 仓库作为工作目录，并使用 `<文件夹名>-amp-<哈希>` 格式的稳定 ID，例如 `storefront-amp-a1b2c3d4e5`。
+管理 Runner 和所有项目 Runner 都会启用 Amp 远程 Terminal。项目 Runner 以已注册的 Git 仓库作为工作目录，并使用基于文件夹名的稳定 ID，例如 `storefront`。如果两个项目的文件夹名生成了相同 ID，后注册的项目会被拒绝。
 
 ## 环境要求
 
@@ -108,7 +108,7 @@ launchctl print "gui/$(id -u)/com.amp.runner-manager"
 
 插件创建项目 Runner 时始终添加 `--remote-control-terminal`。项目 Runner 是临时任务，不会安装到 `~/Library/LaunchAgents`，Mac 重启后也不会自动恢复。
 
-已注册项目会保留原 Runner ID。如需使用新的 `<文件夹名>-amp-<哈希>` 格式，请先停止并移除项目，然后重新注册。
+已注册项目会保留原 Runner ID。如需改用仅包含文件夹名的新格式，请先停止并移除项目，然后重新注册。
 
 ## 配置
 

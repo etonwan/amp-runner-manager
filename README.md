@@ -12,7 +12,7 @@ The plugin provides these tools:
 - `stop_project_runner`
 - `list_project_runners`
 
-Both the management runner and every project runner enable Amp remote terminal access. Project runners use the registered repository as their working directory and receive a stable ID in the form `<folder>-amp-<hash>`, such as `storefront-amp-a1b2c3d4e5`.
+Both the management runner and every project runner enable Amp remote terminal access. Project runners use the registered repository as their working directory and receive a stable ID based on the folder name, such as `storefront`. Registering two projects whose folder names produce the same ID is rejected.
 
 ## Requirements
 
@@ -108,7 +108,7 @@ Then start it by name or alias:
 
 The plugin always adds `--remote-control-terminal` when it creates a project runner. Project runner jobs are temporary: they are not installed in `~/Library/LaunchAgents` and do not return after a Mac restart.
 
-Existing registrations keep their stored runner IDs. Stop, remove, and register a project again if it needs the new `<folder>-amp-<hash>` format.
+Existing registrations keep their stored runner IDs. Stop, remove, and register a project again if it needs the folder-name-only format.
 
 ## Configuration
 
