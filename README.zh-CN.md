@@ -43,11 +43,11 @@ amp skill info amp-runner-manager:managing-project-runners
 
 ### 2. 安装管理 Runner
 
-在用于运行 Runner 的 Mac 上执行以下命令。命令会创建并加载用户 LaunchAgent，使用当前的 Amp 可执行文件，并启用远程 Terminal。
+在用于运行 Runner 的 Mac 上执行以下命令。命令会先创建 `~/runner-manager`，再创建并加载以该目录作为管理 Runner 工作目录的用户 LaunchAgent；LaunchAgent 使用当前的 Amp 可执行文件，并启用远程 Terminal。
 
 ```bash
 AMP_PATH="$(command -v amp)"
-mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$HOME/runner-manager" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 
 cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -65,7 +65,7 @@ cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
       <string>--remote-control-terminal</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$HOME</string>
+    <string>$HOME/runner-manager</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>

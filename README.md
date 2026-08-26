@@ -43,11 +43,11 @@ amp skill info amp-runner-manager:managing-project-runners
 
 ### 2. Install the management runner
 
-Run this command on the Mac that will host the runners. It creates and loads a user LaunchAgent, uses the current Amp executable, and enables remote terminal access.
+Run this command on the Mac that will host the runners. It first creates `~/runner-manager`, then creates and loads a user LaunchAgent that uses that directory as the management runner's working directory, uses the current Amp executable, and enables remote terminal access.
 
 ```bash
 AMP_PATH="$(command -v amp)"
-mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$HOME/runner-manager" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 
 cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -65,7 +65,7 @@ cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
       <string>--remote-control-terminal</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$HOME</string>
+    <string>$HOME/runner-manager</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
