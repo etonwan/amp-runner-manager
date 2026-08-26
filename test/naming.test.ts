@@ -60,10 +60,9 @@ describe("project names and resolution", () => {
   });
 
   test("creates a stable valid hostname label", () => {
-    const first = makeRunnerId("My_Project", "/Users/test/src/My Project");
-    expect(first).toBe(
-      makeRunnerId("My_Project", "/Users/test/src/My Project"),
-    );
+    const first = makeRunnerId("/Users/test/src/My Project");
+    expect(first).toBe(makeRunnerId("/Users/test/src/My Project"));
+    expect(first).toMatch(/^my-project-amp-[a-f0-9]{10}$/);
     expect(first).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
     expect(first.length).toBeLessThanOrEqual(63);
   });

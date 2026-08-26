@@ -20,7 +20,7 @@ const project: ProjectRecord = {
   name: "shop",
   aliases: [],
   path: "/Users/me/shop",
-  runnerId: "amp-shop-1234567890",
+  runnerId: "shop-amp-1234567890",
 };
 
 async function paths(): Promise<StatePaths> {
@@ -65,7 +65,7 @@ describe("launchctl integration boundary", () => {
     };
     const manager = new LaunchdManager(await paths(), command, 501);
 
-    const started = await manager.start(project, "/opt/homebrew/bin/amp", true);
+    const started = await manager.start(project, "/opt/homebrew/bin/amp");
     expect(started.status).toEqual({ loaded: true, state: "running", pid: 42 });
     expect(calls.find((args) => args[1] === "bootstrap")).toEqual([
       "/bin/launchctl",
@@ -78,7 +78,7 @@ describe("launchctl integration boundary", () => {
     expect(calls.find((args) => args[1] === "bootout")).toEqual([
       "/bin/launchctl",
       "bootout",
-      "gui/501/com.amp.runner-manager.amp-shop-1234567890",
+      "gui/501/com.amp.runner-manager.shop-amp-1234567890",
     ]);
   });
 });

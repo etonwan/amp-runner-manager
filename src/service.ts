@@ -60,7 +60,7 @@ export class RunnerManagerService {
         name,
         aliases,
         path,
-        runnerId: makeRunnerId(name, path),
+        runnerId: makeRunnerId(path),
       };
       assertNoConflicts(config.projects, project);
       config.projects.push(project);
@@ -99,10 +99,7 @@ export class RunnerManagerService {
     });
   }
 
-  async startProjectRunner(
-    query: string,
-    remoteControlTerminal: boolean,
-  ): Promise<
+  async startProjectRunner(query: string): Promise<
     | { started: false; resolution: Exclude<Resolution, { kind: "found" }> }
     | {
         started: true;
@@ -127,11 +124,7 @@ export class RunnerManagerService {
         );
       }
       const ampPath = await resolveAmpExecutable();
-      const result = await this.launchd.start(
-        resolution.project,
-        ampPath,
-        remoteControlTerminal,
-      );
+      const result = await this.launchd.start(resolution.project, ampPath);
       return {
         started: true,
         project: resolution.project,

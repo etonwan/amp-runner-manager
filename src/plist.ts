@@ -5,7 +5,6 @@ export interface RunnerJob {
   cwd: string;
   stdoutPath: string;
   stderrPath: string;
-  remoteControlTerminal: boolean;
   pathEnvironment?: string;
 }
 
@@ -23,8 +22,13 @@ export function makeLabel(runnerId: string): string {
 }
 
 export function renderPlist(job: RunnerJob): string {
-  const args = [job.ampPath, "--no-tui", "--runner-id", job.runnerId];
-  if (job.remoteControlTerminal) args.push("--remote-control-terminal");
+  const args = [
+    job.ampPath,
+    "--no-tui",
+    "--runner-id",
+    job.runnerId,
+    "--remote-control-terminal",
+  ];
   const argumentXml = args
     .map((argument) => `      <string>${xml(argument)}</string>`)
     .join("\n");

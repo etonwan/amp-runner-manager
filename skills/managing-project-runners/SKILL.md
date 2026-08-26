@@ -19,5 +19,5 @@ Use the plugin tools as the source of truth for project mappings and runner stat
 - Ask for an absolute path only when the user wants to register a project that is not registered.
 - Use `register_project` once, including useful aliases supplied by the user. Do not invent aliases.
 - Before removing a project whose runner is loaded, call `stop_project_runner` after user intent to stop is clear, then remove it.
-- Enable `remote_control_terminal` only when requested.
+- Project runners always enable remote terminal access.
 - Report the stable runner ID and status after starts; report whether a stop actually unloaded a job.

@@ -105,25 +105,15 @@ export default async function (amp: PluginAPI) {
       name: "start_project_runner",
       title: "Start project runner",
       description:
-        "Start the temporary launchd-managed Amp runner for a registered project. Uses the stored path as cwd and returns candidates rather than guessing. Does not require a path.",
+        "Start the temporary launchd-managed Amp runner for a registered project with remote terminal access enabled. Uses the stored path as cwd and returns candidates rather than guessing. Does not require a path.",
       inputSchema: {
         type: "object",
-        properties: {
-          project: projectQuery,
-          remote_control_terminal: {
-            type: "boolean",
-            default: false,
-            description: "Enable Amp remote terminal access for this runner.",
-          },
-        },
+        properties: { project: projectQuery },
         required: ["project"],
         additionalProperties: false,
       },
       run: (input, manager) =>
-        manager.startProjectRunner(
-          input.project as string,
-          input.remote_control_terminal === true,
-        ),
+        manager.startProjectRunner(input.project as string),
     }),
     tool(service, {
       name: "stop_project_runner",

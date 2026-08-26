@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { basename } from "node:path";
 import type { Candidate, ProjectRecord, Resolution } from "./types";
 
 export const PROJECT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -17,8 +18,8 @@ export function validateProjectName(value: string, field = "name"): string {
   return trimmed;
 }
 
-export function makeRunnerId(name: string, canonicalPath: string): string {
-  const slug = name
+export function makeRunnerId(canonicalPath: string): string {
+  const slug = basename(canonicalPath)
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -27,7 +28,7 @@ export function makeRunnerId(name: string, canonicalPath: string): string {
     .update(canonicalPath)
     .digest("hex")
     .slice(0, 10);
-  return `amp-${slug || "repo"}-${hash}`;
+  return `${slug || "repo"}-amp-${hash}`;
 }
 
 function candidate(project: ProjectRecord): Candidate {

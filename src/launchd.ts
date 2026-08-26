@@ -74,7 +74,6 @@ export class LaunchdManager {
   async start(
     project: ProjectRecord,
     ampPath: string,
-    remoteControlTerminal: boolean,
   ): Promise<{
     status: JobStatus;
     alreadyRunning: boolean;
@@ -94,7 +93,6 @@ export class LaunchdManager {
         cwd: project.path,
         stdoutPath: logs.stdout,
         stderrPath: logs.stderr,
-        remoteControlTerminal,
         ...(process.env.PATH ? { pathEnvironment: process.env.PATH } : {}),
       }),
       { mode: 0o600 },
