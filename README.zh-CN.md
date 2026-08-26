@@ -121,10 +121,24 @@ launchctl print "gui/$(id -u)/com.amp.runner-manager"
 └── logs/
 ```
 
-默认情况下，项目必须位于当前用户的主目录中。如果需要限制或增加允许的根目录，请在首次注册项目之前设置 `AMP_RUNNER_MANAGER_ALLOWED_ROOTS`：
+默认情况下，项目必须位于当前用户的主目录中。如果需要限制或增加允许的根目录，请在首次注册项目之前，将 `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` 添加到管理 LaunchAgent 的 `EnvironmentVariables` 中：
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <!-- 保留已有的 PATH 和 AMP_RUNNER_MANAGER_AMP_PATH。 -->
+  <key>AMP_RUNNER_MANAGER_ALLOWED_ROOTS</key>
+  <string>/Users/alice/src:/Users/alice/work</string>
+</dict>
+```
+
+在终端中通过 `export` 设置变量，不会更新已由 `launchd` 启动的管理 Runner。编辑 `~/Library/LaunchAgents/com.amp.runner-manager.plist` 后，检查文件并重新加载 LaunchAgent，使管理 Runner 获取新的环境变量。在让 Amp 首次注册项目前完成这些操作：
 
 ```bash
-export AMP_RUNNER_MANAGER_ALLOWED_ROOTS="$HOME/src:$HOME/work"
+PLIST="$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+plutil -lint "$PLIST"
+launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
 ```
 
 如果 `config.json` 已存在，请先停止管理 Runner，再编辑其中的 `allowedRoots` 数组。每个项目路径都必须是已存在的绝对路径，并指向 Git 仓库根目录。

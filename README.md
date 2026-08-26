@@ -121,10 +121,24 @@ On first use, the plugin creates:
 └── logs/
 ```
 
-By default, projects must be inside the current user's home directory. To use narrower or additional roots, set `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` before the first project is registered:
+By default, projects must be inside the current user's home directory. To use narrower or additional roots, add `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` to the management LaunchAgent's `EnvironmentVariables` before the first project is registered:
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <!-- Keep the existing PATH and AMP_RUNNER_MANAGER_AMP_PATH entries. -->
+  <key>AMP_RUNNER_MANAGER_ALLOWED_ROOTS</key>
+  <string>/Users/alice/src:/Users/alice/work</string>
+</dict>
+```
+
+Setting the variable with `export` in a terminal does not update a management runner that `launchd` has already started. After editing `~/Library/LaunchAgents/com.amp.runner-manager.plist`, validate the file and reload the LaunchAgent so the runner receives the new environment. Do this before asking Amp to register the first project:
 
 ```bash
-export AMP_RUNNER_MANAGER_ALLOWED_ROOTS="$HOME/src:$HOME/work"
+PLIST="$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+plutil -lint "$PLIST"
+launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
 ```
 
 If `config.json` already exists, stop the management runner before editing its `allowedRoots` array. Every registered path must be an existing absolute path to a Git repository root.
