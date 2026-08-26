@@ -59,11 +59,32 @@ describe("project names and resolution", () => {
     ).toThrow("conflicts");
   });
 
-  test("creates a stable valid hostname label", () => {
+  test("creates a stable valid hostname label from the folder name", () => {
     const first = makeRunnerId("/Users/test/src/My Project");
     expect(first).toBe(makeRunnerId("/Users/test/src/My Project"));
-    expect(first).toMatch(/^my-project-amp-[a-f0-9]{10}$/);
+    expect(first).toBe("my-project");
     expect(first).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/);
     expect(first.length).toBeLessThanOrEqual(63);
+  });
+
+  test("rejects runner ID conflicts from matching folder names", () => {
+    expect(() =>
+      assertNoConflicts(
+        [
+          {
+            name: "first-shop",
+            aliases: [],
+            path: "/Users/test/first/shop",
+            runnerId: makeRunnerId("/Users/test/first/shop"),
+          },
+        ],
+        {
+          name: "second-shop",
+          aliases: [],
+          path: "/Users/test/second/shop",
+          runnerId: makeRunnerId("/Users/test/second/shop"),
+        },
+      ),
+    ).toThrow('runner ID conflicts with project "first-shop"');
   });
 });
