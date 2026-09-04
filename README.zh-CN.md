@@ -43,58 +43,23 @@ amp skill info amp-runner-manager:managing-project-runners
 
 ### 2. 安装管理 Runner
 
-在用于运行 Runner 的 Mac 上执行以下命令。命令会先创建 `~/runner-manager`，再创建并加载以该目录作为管理 Runner 工作目录的用户 LaunchAgent；LaunchAgent 使用当前的 Amp 可执行文件，并启用远程 Terminal。
+在用于运行 Runner 的 Mac 上执行以下命令。安装程序会把管理 Runner 和 watchdog 安装为用户 LaunchAgent 并加载。重复运行可以升级现有安装；安装程序会保留 `AMP_RUNNER_MANAGER_ALLOWED_ROOTS`，并重启管理 Runner。
 
 ```bash
-AMP_PATH="$(command -v amp)"
-mkdir -p "$HOME/runner-manager" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-
-cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>com.amp.runner-manager</string>
-    <key>ProgramArguments</key>
-    <array>
-      <string>$AMP_PATH</string>
-      <string>--no-tui</string>
-      <string>--runner-id</string>
-      <string>runner-manager</string>
-      <string>--remote-control-terminal</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$HOME/runner-manager</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-      <key>PATH</key>
-      <string>$(dirname "$AMP_PATH"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-      <key>AMP_RUNNER_MANAGER_AMP_PATH</key>
-      <string>$AMP_PATH</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$HOME/Library/Logs/amp-runner-manager.stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>$HOME/Library/Logs/amp-runner-manager.stderr.log</string>
-  </dict>
-</plist>
-EOF
-
-plutil -lint "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
-launchctl bootstrap "gui/$(id -u)" \
-  "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+INSTALL_DIR="$(mktemp -d)"
+git clone --depth 1 https://github.com/etonwan/amp-runner-manager.git "$INSTALL_DIR/amp-runner-manager"
+"$INSTALL_DIR/amp-runner-manager/scripts/install-launch-agents.sh"
+rm -rf "$INSTALL_DIR"
 ```
 
-检查管理 Runner 是否已加载：
+检查两个任务是否均已加载：
 
 ```bash
 launchctl print "gui/$(id -u)/com.amp.runner-manager"
+launchctl print "gui/$(id -u)/com.amp.runner-manager.watchdog"
 ```
+
+watchdog 每 5 分钟检查一次。只有 Amp 网站可访问、确认目标进程确实是管理 Runner、该进程没有已建立的 443/TCP 连接，并且独立详细日志已超过 15 分钟没有活动，连续 3 次检查均如此时，watchdog 才会重启管理 Runner。重启后有 30 分钟冷却时间，以免反复重启。watchdog 不会重新创建被人为卸载的管理任务。
 
 ### 3. 注册并启动项目 Runner
 
@@ -121,25 +86,14 @@ launchctl print "gui/$(id -u)/com.amp.runner-manager"
 └── logs/
 ```
 
-默认情况下，项目必须位于当前用户的主目录中。如果需要限制或增加允许的根目录，请在首次注册项目之前，将 `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` 添加到管理 LaunchAgent 的 `EnvironmentVariables` 中：
-
-```xml
-<key>EnvironmentVariables</key>
-<dict>
-  <!-- 保留已有的 PATH 和 AMP_RUNNER_MANAGER_AMP_PATH。 -->
-  <key>AMP_RUNNER_MANAGER_ALLOWED_ROOTS</key>
-  <string>/Users/alice/src:/Users/alice/work</string>
-</dict>
-```
-
-在终端中通过 `export` 设置变量，不会更新已由 `launchd` 启动的管理 Runner。编辑 `~/Library/LaunchAgents/com.amp.runner-manager.plist` 后，检查文件并重新加载 LaunchAgent，使管理 Runner 获取新的环境变量。在让 Amp 首次注册项目前完成这些操作：
+默认情况下，项目必须位于当前用户的主目录中。如果需要限制或增加允许的根目录，请在首次注册项目前，通过 `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` 运行安装程序：
 
 ```bash
-PLIST="$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
-plutil -lint "$PLIST"
-launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+AMP_RUNNER_MANAGER_ALLOWED_ROOTS="/Users/alice/src:/Users/alice/work" \
+  ./scripts/install-launch-agents.sh
 ```
+
+以后不设置该变量再次运行安装程序时，安装程序会保留原值。只在终端中设置变量而不重新运行安装程序，不会改变已运行管理 Runner 的环境。
 
 如果 `config.json` 已存在，请先停止管理 Runner，再编辑其中的 `allowedRoots` 数组。每个项目路径都必须是已存在的绝对路径，并指向 Git 仓库根目录。
 
@@ -155,9 +109,18 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST"
 项目 Runner 的日志位于：
 
 ```text
+~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.amp.log
 ~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stdout.log
 ~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stderr.log
 ```
+
+管理 Runner 使用独立的详细日志 `~/Library/Logs/amp-runner-manager.amp.log`，不再与其他无 TUI Runner 共用日志。运行以下命令可以执行本地诊断：
+
+```bash
+"$HOME/Library/Application Support/Amp Runner Manager/bin/runner-manager-doctor"
+```
+
+watchdog 的判断记录在 `~/Library/Logs/amp-runner-manager-watchdog.log`。
 
 查看最近的错误：
 
@@ -170,8 +133,11 @@ tail -n 100 "$HOME/Library/Application Support/Amp Runner Manager/logs/"*.stderr
 先停止所有项目 Runner，再执行：
 
 ```bash
+launchctl bootout "gui/$(id -u)/com.amp.runner-manager.watchdog"
 launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
-rm -f "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+rm -f \
+  "$HOME/Library/LaunchAgents/com.amp.runner-manager.watchdog.plist" \
+  "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
 ```
 
 打开 Puck 并发送：

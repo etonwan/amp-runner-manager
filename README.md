@@ -43,58 +43,23 @@ amp skill info amp-runner-manager:managing-project-runners
 
 ### 2. Install the management runner
 
-Run this command on the Mac that will host the runners. It first creates `~/runner-manager`, then creates and loads a user LaunchAgent that uses that directory as the management runner's working directory, uses the current Amp executable, and enables remote terminal access.
+Run this on the Mac that will host the runners. The installer creates and loads the management Runner and its watchdog as user LaunchAgents. Re-running it upgrades an existing installation, preserves `AMP_RUNNER_MANAGER_ALLOWED_ROOTS`, and restarts the management Runner.
 
 ```bash
-AMP_PATH="$(command -v amp)"
-mkdir -p "$HOME/runner-manager" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-
-cat > "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>com.amp.runner-manager</string>
-    <key>ProgramArguments</key>
-    <array>
-      <string>$AMP_PATH</string>
-      <string>--no-tui</string>
-      <string>--runner-id</string>
-      <string>runner-manager</string>
-      <string>--remote-control-terminal</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$HOME/runner-manager</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-      <key>PATH</key>
-      <string>$(dirname "$AMP_PATH"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-      <key>AMP_RUNNER_MANAGER_AMP_PATH</key>
-      <string>$AMP_PATH</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$HOME/Library/Logs/amp-runner-manager.stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>$HOME/Library/Logs/amp-runner-manager.stderr.log</string>
-  </dict>
-</plist>
-EOF
-
-plutil -lint "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
-launchctl bootstrap "gui/$(id -u)" \
-  "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+INSTALL_DIR="$(mktemp -d)"
+git clone --depth 1 https://github.com/etonwan/amp-runner-manager.git "$INSTALL_DIR/amp-runner-manager"
+"$INSTALL_DIR/amp-runner-manager/scripts/install-launch-agents.sh"
+rm -rf "$INSTALL_DIR"
 ```
 
-Verify that the management runner is loaded:
+Verify that both jobs are loaded:
 
 ```bash
 launchctl print "gui/$(id -u)/com.amp.runner-manager"
+launchctl print "gui/$(id -u)/com.amp.runner-manager.watchdog"
 ```
+
+The watchdog checks every five minutes. It restarts the management Runner only when Amp is reachable, the verified management process has no established 443/TCP connection, and its dedicated detailed log has shown no activity for at least 15 minutes on three consecutive checks. A 30-minute cooldown prevents restart loops. It does not recreate a deliberately unloaded management job.
 
 ### 3. Register and start a project runner
 
@@ -121,25 +86,14 @@ On first use, the plugin creates:
 └── logs/
 ```
 
-By default, projects must be inside the current user's home directory. To use narrower or additional roots, add `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` to the management LaunchAgent's `EnvironmentVariables` before the first project is registered:
-
-```xml
-<key>EnvironmentVariables</key>
-<dict>
-  <!-- Keep the existing PATH and AMP_RUNNER_MANAGER_AMP_PATH entries. -->
-  <key>AMP_RUNNER_MANAGER_ALLOWED_ROOTS</key>
-  <string>/Users/alice/src:/Users/alice/work</string>
-</dict>
-```
-
-Setting the variable with `export` in a terminal does not update a management runner that `launchd` has already started. After editing `~/Library/LaunchAgents/com.amp.runner-manager.plist`, validate the file and reload the LaunchAgent so the runner receives the new environment. Do this before asking Amp to register the first project:
+By default, projects must be inside the current user's home directory. To use narrower or additional roots, set `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` when running the installer before the first project is registered:
 
 ```bash
-PLIST="$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
-plutil -lint "$PLIST"
-launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+AMP_RUNNER_MANAGER_ALLOWED_ROOTS="/Users/alice/src:/Users/alice/work" \
+  ./scripts/install-launch-agents.sh
 ```
+
+The installer preserves this value on later runs when the variable is omitted. Exporting it without rerunning the installer does not change the environment of an already running management Runner.
 
 If `config.json` already exists, stop the management runner before editing its `allowedRoots` array. Every registered path must be an existing absolute path to a Git repository root.
 
@@ -155,9 +109,18 @@ Examples of requests to Amp:
 Project runner logs are stored at:
 
 ```text
+~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.amp.log
 ~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stdout.log
 ~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stderr.log
 ```
+
+The management Runner uses its own detailed log at `~/Library/Logs/amp-runner-manager.amp.log` instead of the shared Amp no-TUI log. Run local diagnostics with:
+
+```bash
+"$HOME/Library/Application Support/Amp Runner Manager/bin/runner-manager-doctor"
+```
+
+Watchdog decisions are recorded in `~/Library/Logs/amp-runner-manager-watchdog.log`.
 
 Show recent errors with:
 
@@ -170,8 +133,11 @@ tail -n 100 "$HOME/Library/Application Support/Amp Runner Manager/logs/"*.stderr
 Stop all project runners first, then run:
 
 ```bash
+launchctl bootout "gui/$(id -u)/com.amp.runner-manager.watchdog"
 launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
-rm -f "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+rm -f \
+  "$HOME/Library/LaunchAgents/com.amp.runner-manager.watchdog.plist" \
+  "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
 ```
 
 Open Puck and send:
