@@ -54,8 +54,13 @@ export class LaunchdManager {
     return resolve(this.paths.jobs, `${project.runnerId}.plist`);
   }
 
-  logPaths(project: ProjectRecord): { stdout: string; stderr: string } {
+  logPaths(project: ProjectRecord): {
+    amp: string;
+    stdout: string;
+    stderr: string;
+  } {
     return {
+      amp: resolve(this.paths.logs, `${project.runnerId}.amp.log`),
       stdout: resolve(this.paths.logs, `${project.runnerId}.stdout.log`),
       stderr: resolve(this.paths.logs, `${project.runnerId}.stderr.log`),
     };
@@ -77,7 +82,7 @@ export class LaunchdManager {
   ): Promise<{
     status: JobStatus;
     alreadyRunning: boolean;
-    logs: { stdout: string; stderr: string };
+    logs: { amp: string; stdout: string; stderr: string };
   }> {
     const current = await this.status(project);
     const logs = this.logPaths(project);
@@ -91,6 +96,7 @@ export class LaunchdManager {
         ampPath,
         runnerId: project.runnerId,
         cwd: project.path,
+        ampLogPath: logs.amp,
         stdoutPath: logs.stdout,
         stderrPath: logs.stderr,
         ...(process.env.PATH ? { pathEnvironment: process.env.PATH } : {}),

@@ -3,6 +3,7 @@ export interface RunnerJob {
   ampPath: string;
   runnerId: string;
   cwd: string;
+  ampLogPath: string;
   stdoutPath: string;
   stderrPath: string;
   pathEnvironment?: string;
@@ -24,6 +25,8 @@ export function makeLabel(runnerId: string): string {
 export function renderPlist(job: RunnerJob): string {
   const args = [
     job.ampPath,
+    "--log-file",
+    job.ampLogPath,
     "--no-tui",
     "--runner-id",
     job.runnerId,
