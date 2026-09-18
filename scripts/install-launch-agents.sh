@@ -101,7 +101,7 @@ cat >> "$manager_temporary" <<EOF
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
     <key>StandardOutPath</key>
     <string>$home_xml/Library/Logs/amp-runner-manager.stdout.log</string>
     <key>StandardErrorPath</key>

@@ -137,6 +137,45 @@ describe("runner manager watchdog", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  test("installs a standard manager and a background watchdog", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "runner-installer-"));
+    temporary.push(root);
+    await executable(resolve(root, "uname"), "printf 'Darwin\\n'");
+    await executable(resolve(root, "plutil"), "exit 0");
+    await executable(resolve(root, "launchctl"), "exit 0");
+
+    const result = Bun.spawnSync(
+      [
+        "/bin/bash",
+        resolve(import.meta.dir, "../scripts/install-launch-agents.sh"),
+      ],
+      {
+        env: {
+          HOME: root,
+          PATH: `${root}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+          AMP_RUNNER_MANAGER_AMP_PATH: process.execPath,
+        },
+      },
+    );
+    expect(result.exitCode).toBe(0);
+
+    const agents = resolve(root, "Library/LaunchAgents");
+    const manager = await readFile(
+      resolve(agents, "com.amp.runner-manager.plist"),
+      "utf8",
+    );
+    const watchdog = await readFile(
+      resolve(agents, "com.amp.runner-manager.watchdog.plist"),
+      "utf8",
+    );
+    expect(manager).toContain(
+      "<key>ProcessType</key>\n    <string>Standard</string>",
+    );
+    expect(watchdog).toContain(
+      "<key>ProcessType</key>\n    <string>Background</string>",
+    );
+  });
+
   test("does nothing when the manager has recent activity", async () => {
     const item = await fixture();
     const result = await run(item.env);
