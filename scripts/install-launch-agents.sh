@@ -143,8 +143,23 @@ if [ -f "$manager_plist" ]; then
   cp "$manager_plist" "$manager_backup"
 fi
 
-launchctl bootout "$domain/$watchdog_label" >/dev/null 2>&1 || true
-launchctl bootout "$domain/$manager_label" >/dev/null 2>&1 || true
+unload_job() {
+  local target="$domain/$1"
+  local waited=0
+  launchctl bootout "$target" >/dev/null 2>&1 || true
+  # bootout can return before launchd finishes removing the old job.
+  while launchctl print "$target" >/dev/null 2>&1; do
+    if [ "$waited" -ge 30 ]; then
+      printf 'Timed out waiting for %s to unload; plists were not replaced.\n' "$target" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+unload_job "$watchdog_label"
+unload_job "$manager_label"
 install -m 644 "$manager_temporary" "$manager_plist"
 install -m 644 "$watchdog_temporary" "$watchdog_plist"
 

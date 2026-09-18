@@ -137,44 +137,94 @@ describe("runner manager watchdog", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  test("installs a standard manager and a background watchdog", async () => {
-    const root = await mkdtemp(resolve(tmpdir(), "runner-installer-"));
-    temporary.push(root);
-    await executable(resolve(root, "uname"), "printf 'Darwin\\n'");
-    await executable(resolve(root, "plutil"), "exit 0");
-    await executable(resolve(root, "launchctl"), "exit 0");
+  test.each([0, 2, 30, 31])(
+    "installs only after old jobs unload (%i checks)",
+    async (checks) => {
+      const root = await mkdtemp(resolve(tmpdir(), "runner-installer-"));
+      temporary.push(root);
+      await executable(resolve(root, "uname"), "printf 'Darwin\\n'");
+      await executable(resolve(root, "plutil"), "exit 0");
+      await executable(resolve(root, "sleep"), "exit 0");
+      await executable(
+        resolve(root, "launchctl"),
+        `
+case "$1" in
+  bootout)
+    remaining="$UNLOAD_CHECKS"
+    case "$2" in
+      *.watchdog) if [ "$remaining" -gt 0 ]; then remaining=1; fi ;;
+    esac
+    printf '%s\\n' "$remaining" > "$HOME/\${2##*/}.remaining"
+    ;;
+  print)
+    state="$HOME/\${2##*/}.remaining"
+    remaining="$(cat "$state")"
+    if [ "$remaining" -gt 0 ]; then
+      printf '%s\\n' "$((remaining - 1))" > "$state"
+      exit 0
+    fi
+    exit 113
+    ;;
+  bootstrap)
+    label="$(basename "$3" .plist)"
+    printf '%s\\n' "$label" >> "$HOME/bootstrap-calls"
+    if [ "$(cat "$HOME/$label.remaining")" -gt 0 ]; then
+      printf 'Bootstrap failed: 5: Input/output error\\n' >&2
+      exit 5
+    fi
+    ;;
+esac`,
+      );
 
-    const result = Bun.spawnSync(
-      [
-        "/bin/bash",
-        resolve(import.meta.dir, "../scripts/install-launch-agents.sh"),
-      ],
-      {
-        env: {
-          HOME: root,
-          PATH: `${root}:${process.env.PATH ?? "/usr/bin:/bin"}`,
-          AMP_RUNNER_MANAGER_AMP_PATH: process.execPath,
+      const result = Bun.spawnSync(
+        [
+          "/bin/bash",
+          resolve(import.meta.dir, "../scripts/install-launch-agents.sh"),
+        ],
+        {
+          env: {
+            HOME: root,
+            PATH: `${root}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+            AMP_RUNNER_MANAGER_AMP_PATH: process.execPath,
+            UNLOAD_CHECKS: String(checks),
+          },
         },
-      },
-    );
-    expect(result.exitCode).toBe(0);
+      );
+      const agents = resolve(root, "Library/LaunchAgents");
+      if (checks === 31) {
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr.toString()).toContain("Timed out waiting for");
+        expect(await Bun.file(resolve(root, "bootstrap-calls")).exists()).toBe(
+          false,
+        );
+        expect(
+          await Bun.file(
+            resolve(agents, "com.amp.runner-manager.plist"),
+          ).exists(),
+        ).toBe(false);
+        return;
+      }
+      expect(result.exitCode).toBe(0);
 
-    const agents = resolve(root, "Library/LaunchAgents");
-    const manager = await readFile(
-      resolve(agents, "com.amp.runner-manager.plist"),
-      "utf8",
-    );
-    const watchdog = await readFile(
-      resolve(agents, "com.amp.runner-manager.watchdog.plist"),
-      "utf8",
-    );
-    expect(manager).toContain(
-      "<key>ProcessType</key>\n    <string>Standard</string>",
-    );
-    expect(watchdog).toContain(
-      "<key>ProcessType</key>\n    <string>Background</string>",
-    );
-  });
+      expect(await readFile(resolve(root, "bootstrap-calls"), "utf8")).toBe(
+        "com.amp.runner-manager\ncom.amp.runner-manager.watchdog\n",
+      );
+      const manager = await readFile(
+        resolve(agents, "com.amp.runner-manager.plist"),
+        "utf8",
+      );
+      const watchdog = await readFile(
+        resolve(agents, "com.amp.runner-manager.watchdog.plist"),
+        "utf8",
+      );
+      expect(manager).toContain(
+        "<key>ProcessType</key>\n    <string>Standard</string>",
+      );
+      expect(watchdog).toContain(
+        "<key>ProcessType</key>\n    <string>Background</string>",
+      );
+    },
+  );
 
   test("does nothing when the manager has recent activity", async () => {
     const item = await fixture();
