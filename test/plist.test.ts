@@ -27,6 +27,9 @@ describe("launchd plist generation", () => {
       "<string>/Users/me/code/shop &lt;new&gt;</string>",
     );
     expect(output).toContain("<key>KeepAlive</key>");
+    expect(output).toContain(
+      "<key>ProcessType</key>\n    <string>Standard</string>",
+    );
     expect(output).not.toContain("/bin/sh");
   });
 });

@@ -58,7 +58,7 @@ ${argumentXml}
     <key>ThrottleInterval</key>
     <integer>10</integer>
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
     <key>StandardOutPath</key>
     <string>${xml(job.stdoutPath)}</string>
     <key>StandardErrorPath</key>
