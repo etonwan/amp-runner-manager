@@ -1,239 +1,123 @@
-# Amp Runner Manager
+# Amp Runner Manager (Linux)
 
 [中文文档](README.zh-CN.md)
 
-Amp Runner Manager is a macOS-only Amp plugin that lets one persistent management runner start and stop temporary runners for registered Git projects.
+Keeps one Amp [runner](https://ampcode.com/docs/cli/runners) running on a Linux machine as a systemd user service, so you can start threads on that machine from ampcode.com, your phone, or Puck without keeping `amp --no-tui` open in a terminal.
 
-The plugin provides these tools:
+## Why this repository changed
 
-- `register_project`
-- `remove_project`
-- `start_project_runner`
-- `stop_project_runner`
-- `list_project_runners`
+This repository used to be a macOS-only Amp plugin. It ran a "management" runner that started and stopped a separate temporary runner for each registered Git project, plus a watchdog that restarted the management runner.
 
-Both the management runner and every project runner enable Amp remote terminal access. Project runners use the registered repository as their working directory and receive a stable ID based on the folder name, such as `storefront`. Registering two projects whose folder names produce the same ID is rejected.
+That design is no longer needed:
+
+- **One runner can serve many folders.** `amp --no-tui` accepts `--dir`, `--discover-dirs`, and `--no-serve-cwd`, and `amp runner dirs add/remove` changes the served folders while the runner is running. You pick the folder when you start a thread. A runner per project is unnecessary.
+- **The Amp Mac app is now the runner on macOS.** Since [The Mac App Is Your Runner](https://ampcode.com/news/the-mac-app-is-your-runner) (2026-09-24), the app runs `amp --no-tui --no-serve-cwd --runner-id <name>` in your home folder, serves only the folders you add, restarts the runner if it exits, and keeps the Mac awake. That replaces everything the plugin did on a Mac.
+- **Runners update themselves.** A long-running runner installs new releases and restarts into them when idle.
+
+Linux has no Amp app, so the only missing piece there is "start at boot and restart on crash". systemd already does that. This repository now does exactly what the Mac app does, using a systemd user service.
+
+| Mac app                            | This repository on Linux                              |
+| ---------------------------------- | ----------------------------------------------------- |
+| Runs the runner in your home folder with `--no-serve-cwd` | Same command, in a systemd user service |
+| Restarts the runner if it exits    | `Restart=always`                                      |
+| Starts when you open the app       | Starts at boot (via systemd "linger")                 |
+| Add folders in App Settings → Runner | `amp runner dirs add <path>`                        |
+| Keep This Mac Awake                | Not handled; see [Sleep](#sleep)                      |
+
+The runner also enables `--remote-control-terminal`, as the old plugin did, so the Terminal tab works in threads on this machine.
 
 ## Requirements
 
-- macOS
-- Amp CLI installed and signed in
-- A logged-in GUI user, because the plugin manages project runners in the user's `launchd` GUI domain
+- Linux with systemd (Ubuntu, Debian, Fedora, Arch, and most other distributions)
+- The Amp CLI installed and signed in with `amp login` as the user who will own the runner
 
-Bun is required only for development and tests. The plugin returns a `requires macOS` error on Linux and in Amp orbs.
+The service runs as your normal user, not root. Threads can read and change everything that user can.
 
-## Deployment
+## Install
 
-Complete these steps before registering projects.
-
-### 1. Install it as a Personal Plugin
-
-Open Puck on [ampcode.com](https://ampcode.com) with `Ctrl+/`. In the Amp TUI, open the command palette with `Ctrl+O` and select `puck: open`. Then send:
-
-```prompt
-Install https://github.com/etonwan/amp-runner-manager as a Personal Plugin named amp-runner-manager. Ask before pushing the Personal Plugins repository, then reload the plugins.
-```
-
-Approve the push when Puck asks. The plugin is then available to the management runner without cloning it into the Mac's local plugin directory. Verify the installation on the Mac:
+Run on the Linux machine, as your normal user (not with `sudo`):
 
 ```bash
-amp plugins list
-amp skill info amp-runner-manager:managing-project-runners
+git clone --depth 1 https://github.com/etonwan/amp-runner-manager.git
+./amp-runner-manager/scripts/install.sh
 ```
 
-### 2. Install the management runner
+The script:
 
-Run this on the Mac that will host the runners. The installer creates and loads the management Runner and its watchdog as user LaunchAgents. Re-running it upgrades an existing installation, preserves `AMP_RUNNER_MANAGER_ALLOWED_ROOTS`, and restarts the management Runner.
+1. Writes `~/.config/systemd/user/amp-runner.service`.
+2. Enables and (re)starts it.
+3. Enables linger for your user, so the runner starts at boot and keeps running after you log out. This may ask for your `sudo` password once.
+
+The runner ID defaults to the machine's short hostname. To choose another one:
 
 ```bash
-INSTALL_DIR="$(mktemp -d)"
-git clone --depth 1 https://github.com/etonwan/amp-runner-manager.git "$INSTALL_DIR/amp-runner-manager"
-"$INSTALL_DIR/amp-runner-manager/scripts/install-launch-agents.sh"
-rm -rf "$INSTALL_DIR"
+AMP_RUNNER_ID=my-devbox ./amp-runner-manager/scripts/install.sh
 ```
 
-Verify that both jobs are loaded:
+Runner IDs must be valid hostnames: letters, digits, and hyphens. Set `AMP_PATH` if `amp` is not on your `PATH`.
+
+Re-run the script to change the runner ID or pick up a new `PATH`. The cloned folder is not needed after installation.
+
+Check that the runner is up:
 
 ```bash
-launchctl print "gui/$(id -u)/com.amp.runner-manager"
-launchctl print "gui/$(id -u)/com.amp.runner-manager.watchdog"
+systemctl --user status amp-runner
+amp runner list
 ```
 
-The watchdog checks every five minutes. It restarts the management Runner only when Amp is reachable, the verified management process has no established 443/TCP connection, and its dedicated detailed log has shown no activity for at least 15 minutes on three consecutive checks. A 30-minute cooldown prevents restart loops. It does not recreate a deliberately unloaded management job.
+## Choose which folders it serves
 
-### 3. Register and start a project runner
-
-Ask Amp to register a repository once:
-
-> Register project storefront at `/Users/alice/src/storefront` with aliases shop and web.
-
-Then start it by name or alias:
-
-> Start the runner for storefront.
-
-The plugin always adds `--remote-control-terminal` when it creates a project runner. Project runner jobs are temporary: they are not installed in `~/Library/LaunchAgents` and do not return after a Mac restart.
-
-Existing registrations keep their stored runner IDs. Stop, remove, and register a project again if it needs the folder-name-only format.
-
-## Configuration
-
-On first use, the plugin creates:
-
-```text
-~/Library/Application Support/Amp Runner Manager/
-├── config.json
-├── jobs/
-└── logs/
-```
-
-By default, projects must be inside the current user's home directory. To use narrower or additional roots, set `AMP_RUNNER_MANAGER_ALLOWED_ROOTS` when running the installer before the first project is registered:
+The runner starts with no folders. Add the folders you want threads to run in:
 
 ```bash
-AMP_RUNNER_MANAGER_ALLOWED_ROOTS="/Users/alice/src:/Users/alice/work" \
-  ./scripts/install-launch-agents.sh
+amp runner dirs add ~/code/storefront
+amp runner dirs add ~/code/api
+amp runner dirs list
+amp runner dirs remove ~/code/api
 ```
 
-The installer preserves this value on later runs when the variable is omitted. Exporting it without rerunning the installer does not change the environment of an already running management Runner.
+Changes take effect immediately and survive restarts. Add `--runner-id <id>` if more than one runner is running on the machine. To let threads run anywhere in your home folder, add `~`.
 
-If `config.json` already exists, stop the management runner before editing its `allowedRoots` array. Every registered path must be an existing absolute path to a Git repository root.
+Then start a thread on ampcode.com, pick this runner in the location picker, and pick a folder.
 
-## Operations
-
-Examples of requests to Amp:
-
-- “List project runners.”
-- “Start the runner for storefront.”
-- “Stop the runner for shop.”
-- “Remove the storefront project.”
-
-Project runner logs are stored at:
-
-```text
-~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.amp.log
-~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stdout.log
-~/Library/Application Support/Amp Runner Manager/logs/<runner-id>.stderr.log
-```
-
-The management Runner uses its own detailed log at `~/Library/Logs/amp-runner-manager.amp.log` instead of the shared Amp no-TUI log. Run local diagnostics with:
+## Day-to-day operations
 
 ```bash
-"$HOME/Library/Application Support/Amp Runner Manager/bin/runner-manager-doctor"
+systemctl --user restart amp-runner   # restart
+systemctl --user stop amp-runner      # stop until next boot or start
+systemctl --user start amp-runner     # start again
+journalctl --user -u amp-runner -f    # follow service output
 ```
 
-Watchdog decisions are recorded in `~/Library/Logs/amp-runner-manager-watchdog.log`.
+Amp's detailed runner log is `~/.cache/amp/logs/amp-runner.log`.
 
-Show recent errors with:
+Stopping the runner interrupts threads running on it. Do not stop it from the Terminal tab of a thread on this runner: that terminal runs inside the runner.
+
+## Sleep
+
+A runner only works while the machine is awake. Servers normally never sleep. On a laptop or desktop, disable automatic suspend in your desktop's power settings, or run:
 
 ```bash
-tail -n 100 "$HOME/Library/Application Support/Amp Runner Manager/logs/"*.stderr.log
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 ```
 
-## Stop and restart
-
-Stopping a runner disconnects its remote terminal and interrupts work running through it. Finish or save that work first. Run the commands below in the Mac's local Terminal, signed in as the user who installed the runners, without `sudo`. Do not use the remote terminal of the runner being stopped.
-
-### 1. Stop project runners
-
-In a thread connected to the management runner, ask Amp:
-
-> Stop the runner for storefront, then list project runners to confirm it is unloaded.
-
-The project's status should show `loaded: false`. Stopping preserves the registration, repository, and logs. To restart it, ask Amp to start the runner for storefront again.
-
-To stop all project runners before stopping or uninstalling the manager, ask:
-
-> List project runners, stop every loaded project runner, then list them again to confirm all show loaded: false.
-
-If the management runner is unavailable, find the project's stored `runnerId` in `~/Library/Application Support/Amp Runner Manager/config.json`. Use that ID, not the project name or alias, in the local Terminal:
-
-```bash
-RUNNER_ID="storefront" # Replace with the stored runnerId.
-launchctl bootout "gui/$(id -u)/com.amp.runner-manager.$RUNNER_ID"
-launchctl print "gui/$(id -u)/com.amp.runner-manager.$RUNNER_ID"
-```
-
-After a successful stop, `launchctl print` reports that it cannot find the service. Repeat for each project that needs to stop. Do not simply kill the process: `launchd` is configured to restart it while its job remains loaded.
-
-To remove a registration as well, stop its runner first, then ask Amp to remove the storefront project. This removes the saved mapping, not the Git repository or logs.
-
-### 2. Stop the management runner and watchdog
-
-Stopping the manager does **not** stop project runners. Complete step 1 first if the goal is to stop all runners. Then unload the watchdog before the manager:
-
-```bash
-launchctl bootout "gui/$(id -u)/com.amp.runner-manager.watchdog"
-launchctl bootout "gui/$(id -u)/com.amp.runner-manager"
-```
-
-Check that both jobs are unloaded:
-
-```bash
-launchctl print "gui/$(id -u)/com.amp.runner-manager.watchdog"
-launchctl print "gui/$(id -u)/com.amp.runner-manager"
-```
-
-Both checks should report that the service cannot be found. If `bootout` reports an error, use these checks to distinguish an already unloaded job from a failed stop. If a job is still listed, wait briefly and check again; do not continue with uninstall until it is unloaded.
-
-This is a temporary stop: configuration, logs, and LaunchAgent files remain. The manager and watchdog can load again at the next login, including after a Mac restart. To prevent that, follow the uninstall steps below.
-
-To resume without reinstalling, after confirming both jobs are unloaded:
-
-```bash
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.amp.runner-manager.watchdog.plist"
-```
-
-Repeat the two `launchctl print` checks; both should now show loaded job details, and the manager should have `state = running` and a PID. Start any needed project runners separately through Amp.
+Undo it with `sudo systemctl unmask` and the same targets.
 
 ## Uninstall
 
-### 1. Stop all runners and remove automatic startup
-
-Complete both steps in [Stop and restart](#stop-and-restart), including the checks that all project runners, the watchdog, and the management runner are unloaded. Then remove the two LaunchAgent files on the Mac so they cannot load at the next login:
-
 ```bash
-rm -f \
-  "$HOME/Library/LaunchAgents/com.amp.runner-manager.watchdog.plist" \
-  "$HOME/Library/LaunchAgents/com.amp.runner-manager.plist"
+./amp-runner-manager/scripts/uninstall.sh
 ```
 
-### 2. Remove the Personal Plugin
+This stops the runner and removes the unit file. It keeps linger enabled, because other services of yours may rely on it; turn it off with `sudo loginctl disable-linger "$USER"`. It does not remove the Amp CLI or its logs.
 
-Open Puck on [ampcode.com](https://ampcode.com) with `Ctrl+/` and send:
+### Migrating from the old macOS plugin
 
-```prompt
-Remove amp-runner-manager from my Personal Plugins. Ask before pushing the Personal Plugins repository, then reload the plugins.
-```
+On a Mac, use the Amp app's Runner settings instead. To remove the old setup, follow the uninstall section of the [last macOS version of this README](https://github.com/etonwan/amp-runner-manager/blob/aa8d1fc/README.md#uninstall), including removing the `amp-runner-manager` Personal Plugin through Puck.
 
-Approve the push when asked. This removes the Personal Plugin across machines, not just on this Mac. It does not stop runners installed on other Macs; repeat the local stop and LaunchAgent removal steps there if needed. Reload plugins in other existing threads, or start new threads, to pick up the removal.
+## Troubleshooting
 
-### 3. Optionally delete local data
-
-The steps above preserve local configuration, helper scripts, watchdog state, and logs. Back up anything needed before running the following commands: they permanently delete registrations, settings, and logs, so a future installation will require registering projects again. They do not delete registered Git repositories or uninstall the Amp CLI.
-
-```bash
-rm -rf "$HOME/Library/Application Support/Amp Runner Manager"
-rm -f \
-  "$HOME/Library/Logs/amp-runner-manager.amp.log" \
-  "$HOME/Library/Logs/amp-runner-manager.stdout.log" \
-  "$HOME/Library/Logs/amp-runner-manager.stderr.log" \
-  "$HOME/Library/Logs/amp-runner-manager-watchdog.log" \
-  "$HOME/Library/Logs/amp-runner-manager-watchdog.stderr.log"
-```
-
-The installer also creates `~/runner-manager` as the manager's working directory. If it is no longer needed, remove it only when empty:
-
-```bash
-rmdir "$HOME/runner-manager"
-```
-
-If `rmdir` reports that the directory is not empty, leave it in place until its contents have been reviewed.
-
-## Development
-
-```bash
-bun install
-bun run check
-```
-
-Tests cover configuration validation, project resolution, runner ID generation, plist generation, and the `launchctl` command boundary. Real `launchd` integration must be verified on macOS.
+- **The service keeps restarting with `API key required for --no-tui`.** The service cannot see your sign-in. Run `amp login` as the same user, then `systemctl --user restart amp-runner`. Signing in only through an `AMP_API_KEY` variable in your shell does not reach the service.
+- **`Failed to connect to bus` from `systemctl --user`.** You are in a shell without a user session, such as `sudo -u` or `su`. Log in as the user directly, or run `export XDG_RUNTIME_DIR=/run/user/$(id -u)` first.
+- **The runner is gone after logout or reboot.** Linger is off. Run `sudo loginctl enable-linger "$USER"`.
+- **A tool is missing in threads.** The service uses the `PATH` from when you ran the installer. Re-run the installer from a shell where the tool is on `PATH`.

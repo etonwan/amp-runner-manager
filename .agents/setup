@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_root"
-
-echo "[setup] Installing Bun dependencies from bun.lock"
-start_time=$SECONDS
-bun install --frozen-lockfile
-echo "[setup] Dependencies ready in $((SECONDS - start_time))s"
+# This project is two shell scripts and has no dependencies to install.
+echo "[setup] No dependencies to install"
